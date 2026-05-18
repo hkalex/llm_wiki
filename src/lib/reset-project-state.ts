@@ -40,12 +40,13 @@ export async function resetProjectState(): Promise<void> {
 
   // Module-level caches — load in parallel and clear each, surfacing any
   // failure instead of swallowing it.
-  const [queueMod, dedupQueueMod, graphMod, fileSyncMod, scheduledImportMod] = await Promise.allSettled([
+  const [queueMod, dedupQueueMod, graphMod, fileSyncMod, scheduledImportMod, serverBridgeMod] = await Promise.allSettled([
     import("@/lib/ingest-queue"),
     import("@/lib/dedup-queue"),
     import("@/lib/graph-relevance"),
     import("@/lib/project-file-sync"),
     import("@/lib/scheduled-import"),
+    import("@/lib/server-ingest-bridge"),
   ])
 
   if (scheduledImportMod.status === "fulfilled") {
@@ -56,6 +57,14 @@ export async function resetProjectState(): Promise<void> {
     }
   } else {
     console.warn("[Reset Project State] Failed to load scheduled-import:", scheduledImportMod.reason)
+  }
+
+  if (serverBridgeMod.status === "fulfilled") {
+    try {
+      serverBridgeMod.value.stopServerIngestBridge()
+    } catch (err) {
+      console.warn("[Reset Project State] stopServerIngestBridge failed:", err)
+    }
   }
 
   if (queueMod.status === "fulfilled") {

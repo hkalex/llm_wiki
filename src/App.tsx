@@ -328,6 +328,12 @@ function App() {
     }
     const isServerMode = useWikiStore.getState().connectionMode === "server"
 
+    if (isServerMode) {
+      import("@/lib/server-ingest-bridge").then(({ startServerIngestBridge }) => {
+        startServerIngestBridge(proj.id)
+      }).catch((err) => console.error("Failed to start server ingest bridge:", err))
+    }
+
     // Scheduled import and file-sync watchers are Tauri-backed — skip in server mode
     if (!isServerMode) {
       // Start scheduled import if enabled

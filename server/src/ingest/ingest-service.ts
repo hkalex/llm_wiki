@@ -99,6 +99,15 @@ export function removeItem(id: string, projectId: string): boolean {
 
 const abortControllers = new Map<string, AbortController>()
 let workerActive = false
+let queueDrained = false
+
+export function drainQueue(): void {
+  queueDrained = true
+}
+
+export function resumeQueue(): void {
+  queueDrained = false
+}
 
 /** Abort an in-progress item (if running) without removing it from the DB. */
 export function abortItem(id: string): void {
@@ -122,6 +131,7 @@ async function processLoop(): Promise<void> {
       .run()
 
     while (true) {
+      if (queueDrained) break
       const item = db
         .select()
         .from(ingestQueue)

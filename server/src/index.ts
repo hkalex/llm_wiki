@@ -12,6 +12,7 @@ import { sourceRoutes } from "./sources/source-routes"
 import { settingsRoutes } from "./settings/settings-routes"
 import { ingestRoutes } from "./ingest/ingest-routes"
 import { kickWorker } from "./ingest/ingest-service"
+import { adminRoutes } from "./admin/admin-routes"
 import { getDb } from "./db/database"
 
 const VERSION = "0.1.0"
@@ -54,6 +55,7 @@ async function build() {
   await fastify.register(wikiRoutes, { prefix: "/api/v1/projects/:id/wiki" })
   await fastify.register(sourceRoutes, { prefix: "/api/v1/projects/:id/sources" })
   await fastify.register(ingestRoutes, { prefix: "/api/v1/projects/:id/ingest" })
+  await fastify.register(adminRoutes, { prefix: "/api/v1/admin" })
 
   return fastify
 }

@@ -26,6 +26,24 @@ export function getSettings(
   return Object.fromEntries(rows.map((r) => [r.key, maskValue(r.key, r.value)]))
 }
 
+/** Return raw (unmasked) settings for internal server use only. Never expose to clients. */
+export function getRawSettings(
+  userId: string,
+  projectId?: string | null,
+): Record<string, string> {
+  const db = getDb()
+  const rows = db
+    .select()
+    .from(settings)
+    .where(
+      projectId
+        ? and(eq(settings.userId, userId), eq(settings.projectId, projectId))
+        : and(eq(settings.userId, userId), isNull(settings.projectId)),
+    )
+    .all()
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]))
+}
+
 export function patchSettings(
   userId: string,
   updates: Record<string, string>,

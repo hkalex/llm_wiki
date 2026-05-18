@@ -32,5 +32,6 @@ export const config = {
   lancedbPath: path.resolve(process.env.LANCEDB_PATH ?? "./data/vector"),
   defaultLlmProvider: process.env.DEFAULT_LLM_PROVIDER ?? "openai",
   defaultLlmModel: process.env.DEFAULT_LLM_MODEL ?? "gpt-4o",
+  defaultLlmApiKey: process.env.DEFAULT_LLM_API_KEY ?? "",
   nodeEnv: process.env.NODE_ENV ?? "development",
 } as const

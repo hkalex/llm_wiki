@@ -10,6 +10,8 @@ import { projectRoutes } from "./projects/project-routes"
 import { wikiRoutes } from "./wiki/wiki-routes"
 import { sourceRoutes } from "./sources/source-routes"
 import { settingsRoutes } from "./settings/settings-routes"
+import { ingestRoutes } from "./ingest/ingest-routes"
+import { kickWorker } from "./ingest/ingest-service"
 import { getDb } from "./db/database"
 
 const VERSION = "0.1.0"
@@ -51,6 +53,7 @@ async function build() {
   // Project-scoped routes — parameterized prefix is supported in Fastify 4+
   await fastify.register(wikiRoutes, { prefix: "/api/v1/projects/:id/wiki" })
   await fastify.register(sourceRoutes, { prefix: "/api/v1/projects/:id/sources" })
+  await fastify.register(ingestRoutes, { prefix: "/api/v1/projects/:id/ingest" })
 
   return fastify
 }
@@ -58,6 +61,9 @@ async function build() {
 async function start() {
   getDb()
   logger.info("Database initialized")
+
+  // Resume any items that were left in "processing" state from a previous run
+  kickWorker()
 
   const fastify = await build()
   try {

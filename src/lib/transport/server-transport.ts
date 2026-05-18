@@ -228,6 +228,12 @@ export class ServerTransport implements ITransport {
         const body = await res.json().catch(() => ({})) as { message?: string }
         throw new Error(body.message ?? `HTTP ${res.status}`)
       }
+
+      // Trigger server-side ingest for the uploaded file (best-effort — failure is non-fatal)
+      this.req(`/projects/${projectId}/ingest`, {
+        method: "POST",
+        body: JSON.stringify({ sourcePath: filename }),
+      }).catch(() => { /* ingest trigger failure is non-fatal */ })
     } catch (err) {
       throw new Error(`ServerTransport.copyFile: ${err instanceof Error ? err.message : String(err)}`)
     }
@@ -299,6 +305,74 @@ export class ServerTransport implements ITransport {
   /** List all server projects for the current user (not on ITransport). */
   async listServerProjects(): Promise<Array<{ id: string; name: string; slug: string }>> {
     return this.req("/projects")
+  }
+
+  /**
+   * Subscribe to server-side ingest progress events for a project via SSE.
+   * Calls `onEvent` for each event received. Returns an unsubscribe function.
+   *
+   * Event shapes mirror the server's SSE protocol:
+   *   { type: "snapshot",  items: IngestQueueItem[] }
+   *   { type: "queued",    itemId, sourcePath, status }
+   *   { type: "progress",  itemId, sourcePath, detail }
+   *   { type: "done",      itemId, sourcePath, filesWritten }
+   *   { type: "error",     itemId, sourcePath, message }
+   *   { type: "retry",     itemId, retryCount, message }
+   *   { type: "cancelled", itemId }
+   */
+  subscribeIngestEvents(
+    projectId: string,
+    onEvent: (event: Record<string, unknown>) => void,
+  ): () => void {
+    const token = getServerToken()
+    const url = `${this.baseUrl}/api/v1/projects/${projectId}/ingest/events`
+    const ac = new AbortController()
+
+    const connect = async () => {
+      try {
+        const res = await fetch(url, {
+          headers: {
+            Accept: "text/event-stream",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          signal: ac.signal,
+        })
+        if (!res.ok || !res.body) return
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ""
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            // SSE events are delimited by double newline
+            const parts = buffer.split("\n\n")
+            buffer = parts.pop() ?? ""
+            for (const part of parts) {
+              for (const line of part.split("\n")) {
+                const trimmed = line.trim()
+                if (!trimmed.startsWith("data: ")) continue
+                try {
+                  onEvent(JSON.parse(trimmed.slice(6)) as Record<string, unknown>)
+                } catch {
+                  // ignore malformed event
+                }
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock()
+        }
+      } catch {
+        // connection closed or aborted — ignore
+      }
+    }
+
+    connect()
+    return () => ac.abort()
   }
 }
 

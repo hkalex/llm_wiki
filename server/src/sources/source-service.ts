@@ -1,6 +1,8 @@
 import fs from "fs"
 import path from "path"
-import { ForbiddenError, NotFoundError } from "../shared/errors"
+import { ForbiddenError, HttpError, NotFoundError } from "../shared/errors"
+import { config } from "../config"
+import { listProjects } from "../projects/project-service"
 
 export interface SourceFile {
   name: string
@@ -78,10 +80,34 @@ export function deleteSource(storagePath: string, sourcePath: string): void {
   }
 }
 
+export function getUserStorageBytes(userId: string): number {
+  const userProjects = listProjects(userId)
+  let total = 0
+  for (const project of userProjects) {
+    const sourcesPath = path.join(project.storagePath, "raw", "sources")
+    if (!fs.existsSync(sourcesPath)) continue
+    const walk = (dir: string) => {
+      let entries: fs.Dirent[]
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return }
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name)
+        if (entry.isDirectory()) {
+          walk(fullPath)
+        } else {
+          try { total += fs.statSync(fullPath).size } catch { /* ignore */ }
+        }
+      }
+    }
+    walk(sourcesPath)
+  }
+  return total
+}
+
 export function saveUploadedSource(
   storagePath: string,
   filename: string,
   buffer: Buffer,
+  userId?: string,
 ): SourceFile {
   const base = sourcesDir(storagePath)
   fs.mkdirSync(base, { recursive: true })
@@ -89,6 +115,17 @@ export function saveUploadedSource(
   // Sanitize filename
   const safeName = path.basename(filename).replace(/[^\w\s.-]/g, "_")
   const destPath = path.join(base, safeName)
+
+  if (userId && config.storageQuotaBytes > 0) {
+    const used = getUserStorageBytes(userId)
+    // TOCTOU: two concurrent uploads from the same user can both pass this check
+    // and together overshoot the quota by at most one file. Node is single-threaded
+    // so the race window is narrow (bounded by the OS I/O in getUserStorageBytes),
+    // and the blast radius is one extra file. Acceptable for a single-process server.
+    if (used + buffer.length > config.storageQuotaBytes) {
+      throw new HttpError(413, "Storage quota exceeded")
+    }
+  }
 
   fs.writeFileSync(destPath, buffer)
   const stat = fs.statSync(destPath)

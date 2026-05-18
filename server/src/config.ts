@@ -34,4 +34,16 @@ export const config = {
   defaultLlmModel: process.env.DEFAULT_LLM_MODEL ?? "gpt-4o",
   defaultLlmApiKey: process.env.DEFAULT_LLM_API_KEY ?? "",
   nodeEnv: process.env.NODE_ENV ?? "development",
+  encryptionKey: process.env.ENCRYPTION_KEY ?? "",
+  ingestRateLimitPerHour: parseInt(process.env.INGEST_RATE_LIMIT_PER_HOUR ?? "20", 10),
+  storageQuotaBytes: parseInt(process.env.STORAGE_QUOTA_MB ?? "0", 10) * 1024 * 1024,
 } as const
+
+// Fail fast: a set but malformed ENCRYPTION_KEY would otherwise silently
+// throw "Invalid key length" on the first API-key save, deep in a request.
+if (config.encryptionKey && !/^[0-9a-f]{64}$/i.test(config.encryptionKey)) {
+  throw new Error(
+    "ENCRYPTION_KEY must be a 64-character hex string (32 bytes). " +
+    "Generate one with: openssl rand -hex 32",
+  )
+}

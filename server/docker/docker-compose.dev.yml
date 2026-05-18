@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  app:
+    build:
+      target: development
+    command: npm run dev
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: /data/dev.db
+      STORAGE_PATH: /data/projects
+      LANCEDB_PATH: /data/vector
+    volumes:
+      - ..:/app
+      - /app/node_modules
+      - dev_data:/data
+    ports:
+      - "3000:3000"
+
+volumes:
+  dev_data:

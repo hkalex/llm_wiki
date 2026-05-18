@@ -26,13 +26,15 @@ export const sourceRoutes: FastifyPluginAsync = async (fastify) => {
       const data = await request.file()
       if (!data) throw new BadRequestError("No file in request")
 
+      // Full file is buffered into memory before the quota check in saveUploadedSource.
+      // Memory exposure is capped by the 200 MB fileSize limit configured in index.ts.
       const chunks: Buffer[] = []
       for await (const chunk of data.file) {
         chunks.push(chunk)
       }
       const buffer = Buffer.concat(chunks)
 
-      const source = saveUploadedSource(project.storagePath, data.filename, buffer)
+      const source = saveUploadedSource(project.storagePath, data.filename, buffer, request.user.id)
       reply.code(201).send(source)
     },
   )

@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from "fastify"
+import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify"
 import { requireAuth } from "../auth/auth-middleware"
 import { assertProjectAccess } from "../projects/project-service"
 import {
@@ -9,7 +9,24 @@ import {
   subscribeToProject,
   kickWorker,
 } from "./ingest-service"
-import { BadRequestError } from "../shared/errors"
+import { BadRequestError, HttpError } from "../shared/errors"
+import { config } from "../config"
+
+// Per-user in-memory rate limiter: tracks request timestamps in a sliding window
+const rateLimitStore = new Map<string, number[]>()
+
+function ingestRateLimitHandler(request: FastifyRequest, _reply: FastifyReply): void {
+  if (config.ingestRateLimitPerHour <= 0) return
+  const userId = request.user.id
+  const now = Date.now()
+  const windowStart = now - 60 * 60 * 1000
+  const timestamps = (rateLimitStore.get(userId) ?? []).filter((t) => t > windowStart)
+  if (timestamps.length >= config.ingestRateLimitPerHour) {
+    throw new HttpError(429, "Rate limit exceeded. Try again later.")
+  }
+  timestamps.push(now)
+  rateLimitStore.set(userId, timestamps)
+}
 
 export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /projects/:id/ingest — list queue items
@@ -26,7 +43,7 @@ export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { id: string }; Body: { sourcePath: string } }>(
     "/",
     {
-      preHandler: [requireAuth],
+      preHandler: [requireAuth, ingestRateLimitHandler],
       schema: {
         body: {
           type: "object",

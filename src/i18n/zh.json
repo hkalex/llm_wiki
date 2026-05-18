@@ -182,6 +182,7 @@
       "multimodal": "图片描述",
       "webSearch": "网页搜索",
       "network": "网络",
+      "server": "服务器连接",
       "sourceWatch": "资料文件夹监控",
       "scheduledImport": "定时导入",
       "output": "输出偏好",

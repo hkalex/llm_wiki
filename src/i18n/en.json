@@ -182,6 +182,7 @@
       "multimodal": "Image Captioning",
       "webSearch": "Web Search",
       "network": "Network",
+      "server": "Connection",
       "sourceWatch": "Source Watch",
       "scheduledImport": "Scheduled Import",
       "output": "Output",

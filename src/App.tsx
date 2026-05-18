@@ -5,13 +5,16 @@ import { useWikiStore } from "@/stores/wiki-store"
 import { useReviewStore } from "@/stores/review-store"
 import { useChatStore } from "@/stores/chat-store"
 import { listDirectory, openProject } from "@/commands/fs"
-import { getLastProject, getRecentProjects, saveLastProject, loadLlmConfig, loadLanguage, loadSearchApiConfig, loadEmbeddingConfig, loadMultimodalConfig, loadOutputLanguage, loadProviderConfigs, loadActivePresetId, loadProxyConfig, loadScheduledImportConfig, saveScheduledImportConfig, loadSourceWatchConfig } from "@/lib/project-store"
+import { getLastProject, getRecentProjects, saveLastProject, loadLlmConfig, loadLanguage, loadSearchApiConfig, loadEmbeddingConfig, loadMultimodalConfig, loadOutputLanguage, loadProviderConfigs, loadActivePresetId, loadProxyConfig, loadScheduledImportConfig, saveScheduledImportConfig, loadSourceWatchConfig, loadConnectionMode, loadServerUrl } from "@/lib/project-store"
 import { loadReviewItems, loadChatHistory } from "@/lib/persist"
 import { setupAutoSave } from "@/lib/auto-save"
 import { startClipWatcher } from "@/lib/clip-watcher"
 import { AppLayout } from "@/components/layout/app-layout"
 import { WelcomeScreen } from "@/components/project/welcome-screen"
 import { CreateProjectDialog } from "@/components/project/create-project-dialog"
+import { LoginForm } from "@/components/auth/login-form"
+import { ServerProjectPicker } from "@/components/project/server-project-picker"
+import { getServerToken, clearServerToken } from "@/lib/server-auth"
 import type { WikiProject } from "@/types/wiki"
 
 function App() {
@@ -20,14 +23,26 @@ function App() {
   const setFileTree = useWikiStore((s) => s.setFileTree)
   const setSelectedFile = useWikiStore((s) => s.setSelectedFile)
   const setActiveView = useWikiStore((s) => s.setActiveView)
+  const connectionMode = useWikiStore((s) => s.connectionMode)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [loading, setLoading] = useState(true)
+  // Server-mode auth state: null = unknown, false = no token, true = has token
+  const [serverAuthed, setServerAuthed] = useState<boolean | null>(null)
 
   // Set up auto-save and clip watcher once on mount
   useEffect(() => {
     setupAutoSave()
     startClipWatcher()
   }, [])
+
+  // Detect server-mode auth state whenever connection mode changes
+  useEffect(() => {
+    if (connectionMode === "server") {
+      setServerAuthed(!!getServerToken())
+    } else {
+      setServerAuthed(null)
+    }
+  }, [connectionMode])
 
   // Dev-only helper for visually testing the update-banner UX.
   // Open dev tools and run:
@@ -222,6 +237,14 @@ function App() {
         if (savedProxy) {
           useWikiStore.getState().setProxyConfig(savedProxy)
         }
+        const savedConnectionMode = await loadConnectionMode()
+        if (savedConnectionMode) {
+          useWikiStore.getState().setConnectionMode(savedConnectionMode)
+        }
+        const savedServerUrl = await loadServerUrl()
+        if (savedServerUrl) {
+          useWikiStore.getState().setServerUrl(savedServerUrl)
+        }
         const savedLang = await loadLanguage()
         if (savedLang) {
           await i18n.changeLanguage(savedLang)
@@ -303,44 +326,49 @@ function App() {
     } catch {
       // ignore
     }
-    // Start scheduled import if enabled
-    const scheduledImportConfig = useWikiStore.getState().scheduledImportConfig
-    if (scheduledImportConfig.enabled && scheduledImportConfig.path && scheduledImportConfig.interval > 0) {
-      import("@/lib/scheduled-import").then(({ startScheduledImport }) => {
-        startScheduledImport(proj, scheduledImportConfig)
-      }).catch((err) =>
-        console.error("Failed to start scheduled import:", err)
-      )
-    }
+    const isServerMode = useWikiStore.getState().connectionMode === "server"
 
-    // Start project source watch if enabled
-    import("@/lib/project-file-sync").then(async ({ startProjectFileSync, stopProjectFileSync }) => {
-      const config = await loadSourceWatchConfig(proj.id)
-      useWikiStore.getState().setSourceWatchConfig(config)
-      if (config.enabled) {
-        startProjectFileSync(proj, config).catch((err) =>
-          console.error("Failed to start project file sync:", err)
+    // Scheduled import and file-sync watchers are Tauri-backed — skip in server mode
+    if (!isServerMode) {
+      // Start scheduled import if enabled
+      const scheduledImportConfig = useWikiStore.getState().scheduledImportConfig
+      if (scheduledImportConfig.enabled && scheduledImportConfig.path && scheduledImportConfig.interval > 0) {
+        import("@/lib/scheduled-import").then(({ startScheduledImport }) => {
+          startScheduledImport(proj, scheduledImportConfig)
+        }).catch((err) =>
+          console.error("Failed to start scheduled import:", err)
         )
-      } else {
-        stopProjectFileSync().catch(() => {})
       }
-    }).catch((err) => console.error("Failed to configure project file sync:", err))
-    // Notify local clip server of the current project + all recent projects
-    fetch("http://127.0.0.1:19827/project", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: proj.path }),
-    }).catch(() => {})
 
-    // Send all recent projects to clip server for extension project picker
-    getRecentProjects().then((recents) => {
-      const projects = recents.map((p) => ({ name: p.name, path: p.path }))
-      fetch("http://127.0.0.1:19827/projects", {
+      // Start project source watch if enabled
+      import("@/lib/project-file-sync").then(async ({ startProjectFileSync, stopProjectFileSync }) => {
+        const config = await loadSourceWatchConfig(proj.id)
+        useWikiStore.getState().setSourceWatchConfig(config)
+        if (config.enabled) {
+          startProjectFileSync(proj, config).catch((err) =>
+            console.error("Failed to start project file sync:", err)
+          )
+        } else {
+          stopProjectFileSync().catch(() => {})
+        }
+      }).catch((err) => console.error("Failed to configure project file sync:", err))
+
+      // Notify local clip server of the current project + all recent projects
+      fetch("http://127.0.0.1:19827/project", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projects }),
+        body: JSON.stringify({ path: proj.path }),
       }).catch(() => {})
-    }).catch(() => {})
+
+      getRecentProjects().then((recents) => {
+        const projects = recents.map((p) => ({ name: p.name, path: p.path }))
+        fetch("http://127.0.0.1:19827/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projects }),
+        }).catch(() => {})
+      }).catch(() => {})
+    }
     try {
       const tree = await listDirectory(proj.path)
       setFileTree(tree)
@@ -425,6 +453,33 @@ function App() {
         Loading...
       </div>
     )
+  }
+
+  // ── Server mode screens ─────────────────────────────────────────────────
+  if (connectionMode === "server") {
+    if (!serverAuthed) {
+      return (
+        <LoginForm onSuccess={() => setServerAuthed(true)} />
+      )
+    }
+    if (!project) {
+      return (
+        <ServerProjectPicker
+          onProjectSelected={async (p) => {
+            const proj: WikiProject = {
+              id: p.id,
+              name: p.name,
+              path: `server://${p.id}`,
+            }
+            await handleProjectOpened(proj)
+          }}
+          onLogout={() => {
+            clearServerToken()
+            setServerAuthed(false)
+          }}
+        />
+      )
+    }
   }
 
   if (!project) {

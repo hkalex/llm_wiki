@@ -1,6 +1,6 @@
 import { load } from "@tauri-apps/plugin-store"
 import type { WikiProject } from "@/types/wiki"
-import type { LlmConfig, SearchApiConfig, EmbeddingConfig, MultimodalConfig, OutputLanguage, ProviderConfigs, ProxyConfig, ScheduledImportConfig, SourceWatchConfig } from "@/stores/wiki-store"
+import type { LlmConfig, SearchApiConfig, EmbeddingConfig, MultimodalConfig, OutputLanguage, ProviderConfigs, ProxyConfig, ScheduledImportConfig, SourceWatchConfig, ConnectionMode } from "@/stores/wiki-store"
 import { normalizeSourceWatchConfig } from "@/lib/source-watch-config"
 import { normalizePath } from "@/lib/path-utils"
 
@@ -261,6 +261,31 @@ export async function loadSourceWatchConfig(projectId?: string): Promise<SourceW
 
   const legacyEnabled = await loadProjectFileSyncEnabled(projectId)
   return normalizeSourceWatchConfig({ enabled: legacyEnabled })
+}
+
+// ── Server mode ──────────────────────────────────────────────────────────
+
+const CONNECTION_MODE_KEY = "connectionMode"
+const SERVER_URL_KEY = "serverUrl"
+
+export async function saveConnectionMode(mode: ConnectionMode): Promise<void> {
+  const store = await getStore()
+  await store.set(CONNECTION_MODE_KEY, mode)
+}
+
+export async function loadConnectionMode(): Promise<ConnectionMode | null> {
+  const store = await getStore()
+  return (await store.get<ConnectionMode>(CONNECTION_MODE_KEY)) ?? null
+}
+
+export async function saveServerUrl(url: string): Promise<void> {
+  const store = await getStore()
+  await store.set(SERVER_URL_KEY, url)
+}
+
+export async function loadServerUrl(): Promise<string | null> {
+  const store = await getStore()
+  return (await store.get<string>(SERVER_URL_KEY)) ?? null
 }
 
 // ── Update-check persistence ──────────────────────────────────────────────

@@ -213,11 +213,15 @@ export interface ProviderOverride {
 
 export type ProviderConfigs = Record<string, ProviderOverride>
 
+export type ConnectionMode = "local" | "server"
+
 interface WikiState {
   project: WikiProject | null
   fileTree: FileNode[]
   selectedFile: string | null
   fileContent: string
+  connectionMode: ConnectionMode
+  serverUrl: string
   /**
    * One-shot scroll target for the markdown preview. When the user
    * clicks an image in search results and chooses "jump to source",
@@ -249,6 +253,8 @@ interface WikiState {
   sourceWatchConfig: SourceWatchConfig
   dataVersion: number
 
+  setConnectionMode: (mode: ConnectionMode) => void
+  setServerUrl: (url: string) => void
   setProject: (project: WikiProject | null) => void
   setFileTree: (tree: FileNode[]) => void
   setSelectedFile: (path: string | null) => void
@@ -277,6 +283,8 @@ export const useWikiStore = create<WikiState>((set) => ({
   pendingScrollImageSrc: null,
   chatExpanded: false,
   activeView: "wiki",
+  connectionMode: "local",
+  serverUrl: "",
   llmConfig: {
     provider: "openai",
     apiKey: "",
@@ -291,6 +299,8 @@ export const useWikiStore = create<WikiState>((set) => ({
 
   dataVersion: 0,
 
+  setConnectionMode: (connectionMode) => set({ connectionMode }),
+  setServerUrl: (serverUrl) => set({ serverUrl }),
   setProject: (project) => set({ project }),
   setFileTree: (fileTree) => set({ fileTree }),
   setSelectedFile: (selectedFile) => set({ selectedFile }),

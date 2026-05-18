@@ -35,6 +35,7 @@ import { SourceWatchSection } from "./sections/source-watch-section"
 import { ChangelogSection } from "./sections/changelog-section"
 import { MaintenanceSection } from "./sections/maintenance-section"
 import { AboutSection } from "./sections/about-section"
+import { ServerConnectionSection } from "./sections/server-connection-section"
 
 type CategoryId =
   | "llm"
@@ -42,6 +43,7 @@ type CategoryId =
   | "multimodal"
   | "web-search"
   | "network"
+  | "server"
   | "source-watch"
   | "scheduled-import"
   | "output"
@@ -65,6 +67,9 @@ const CATEGORIES: Category[] = [
   { id: "multimodal", labelKey: "settings.categories.multimodal", icon: ImageIcon },
   { id: "web-search", labelKey: "settings.categories.webSearch", icon: Globe },
   { id: "network", labelKey: "settings.categories.network", icon: Network },
+  ...(import.meta.env.VITE_ENABLE_SERVER_MODE === "true"
+    ? [{ id: "server" as CategoryId, labelKey: "settings.categories.server", icon: Globe }]
+    : []),
   { id: "source-watch", labelKey: "settings.categories.sourceWatch", icon: FolderSync },
   { id: "scheduled-import", labelKey: "settings.categories.scheduledImport", icon: Clock },
   { id: "output", labelKey: "settings.categories.output", icon: Languages },
@@ -84,6 +89,8 @@ function initialDraft(
   sourceWatch: ReturnType<typeof useWikiStore.getState>["sourceWatchConfig"],
   maxHistoryMessages: number,
   uiLanguage: string,
+  connectionMode: ReturnType<typeof useWikiStore.getState>["connectionMode"],
+  serverUrl: string,
   projectPath?: string,
 ): SettingsDraft {
   // Show absolute path: if stored path is empty, show default using project path
@@ -132,6 +139,8 @@ function initialDraft(
     scheduledImportInterval: scheduledImport.interval,
     sourceWatchConfig: normalizeSourceWatchConfig(sourceWatch),
     uiLanguage,
+    connectionMode,
+    serverUrl,
   }
 }
 
@@ -152,6 +161,10 @@ export function SettingsView() {
   const setScheduledImportConfig = useWikiStore((s) => s.setScheduledImportConfig)
   const sourceWatchConfig = useWikiStore((s) => s.sourceWatchConfig)
   const setSourceWatchConfig = useWikiStore((s) => s.setSourceWatchConfig)
+  const connectionMode = useWikiStore((s) => s.connectionMode)
+  const setConnectionMode = useWikiStore((s) => s.setConnectionMode)
+  const serverUrl = useWikiStore((s) => s.serverUrl)
+  const setServerUrl = useWikiStore((s) => s.setServerUrl)
   const maxHistoryMessages = useChatStore((s) => s.maxHistoryMessages)
   const setMaxHistoryMessages = useChatStore((s) => s.setMaxHistoryMessages)
   // Drives the red dot next to the "About" row in the settings
@@ -177,6 +190,8 @@ export function SettingsView() {
       sourceWatchConfig,
       maxHistoryMessages,
       i18n.language,
+      connectionMode,
+      serverUrl,
       project?.path,
     ),
   )
@@ -219,6 +234,8 @@ export function SettingsView() {
         sourceWatchConfig,
         maxHistoryMessages,
         prev.uiLanguage,
+        connectionMode,
+        serverUrl,
         project?.path,
       ),
     )
@@ -231,6 +248,8 @@ export function SettingsView() {
     scheduledImportConfig,
     sourceWatchConfig,
     maxHistoryMessages,
+    connectionMode,
+    serverUrl,
     project,
   ])
 
@@ -247,6 +266,8 @@ export function SettingsView() {
       saveProxyConfig,
       saveScheduledImportConfig,
       saveSourceWatchConfig,
+      saveConnectionMode,
+      saveServerUrl,
     } = await import("@/lib/project-store")
 
     const newLlm = {
@@ -348,6 +369,11 @@ export function SettingsView() {
 
     setMaxHistoryMessages(draft.maxHistoryMessages)
 
+    setConnectionMode(draft.connectionMode)
+    await saveConnectionMode(draft.connectionMode)
+    setServerUrl(draft.serverUrl)
+    await saveServerUrl(draft.serverUrl)
+
     if (draft.uiLanguage !== i18n.language) {
       await i18n.changeLanguage(draft.uiLanguage)
       await saveLanguage(draft.uiLanguage)
@@ -366,6 +392,8 @@ export function SettingsView() {
     setSourceWatchConfig,
     scheduledImportConfig,
     setMaxHistoryMessages,
+    setConnectionMode,
+    setServerUrl,
     outputLanguage,
   ])
 
@@ -384,6 +412,8 @@ export function SettingsView() {
         return <WebSearchSection />
       case "network":
         return <NetworkSection draft={draft} setDraft={setDraft} />
+      case "server":
+        return <ServerConnectionSection draft={draft} setDraft={setDraft} />
       case "source-watch":
         return <SourceWatchSection draft={draft} setDraft={setDraft} projectReady={!!project} />
       case "scheduled-import":

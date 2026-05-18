@@ -62,6 +62,10 @@ export interface SettingsDraft {
 
   // Source folder auto watch
   sourceWatchConfig: SourceWatchConfig
+
+  // Server mode connection
+  connectionMode: "local" | "server"
+  serverUrl: string
 }
 
 export type DraftSetter = <K extends keyof SettingsDraft>(

@@ -81,6 +81,11 @@ export class ServerTransport implements ITransport {
       const page = await this.req<{ content: string }>(`/projects/${projectId}/wiki/${relative.slice(5)}`)
       return page.content
     }
+    if (relative.startsWith("raw/sources/")) {
+      const sourcePath = relative.slice("raw/sources/".length)
+      const result = await this.req<{ text: string }>(`/projects/${projectId}/sources/~text/${sourcePath}`)
+      return result.text
+    }
     throw new Error(`ServerTransport.readFile: unsupported path segment: ${relative}`)
   }
 
@@ -180,20 +185,70 @@ export class ServerTransport implements ITransport {
     return 0
   }
 
-  async copyFile(_source: string, _destination: string): Promise<void> {
-    throw new Error("ServerTransport.copyFile: not supported in Phase 2")
+  async copyFile(source: string, destination: string): Promise<void> {
+    // local file → server: upload via multipart (used by importSourceFiles)
+    if (!destination.startsWith(SERVER_SCHEME)) {
+      throw new Error("ServerTransport.copyFile: destination must be a server:// path")
+    }
+    const { projectId, relative } = parsePath(destination)
+    if (!relative.startsWith("raw/sources/")) {
+      throw new Error("ServerTransport.copyFile: destination must be under raw/sources/")
+    }
+
+    const filename = relative.slice("raw/sources/".length)
+
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
+      throw new Error("ServerTransport.copyFile: uploading local files requires the desktop app")
+    }
+
+    // Read local file via Tauri (only available in the desktop app), then upload.
+    try {
+      const { invoke } = await import("@tauri-apps/api/core")
+      const { base64 } = await invoke<{ base64: string; mimeType: string }>(
+        "read_file_as_base64",
+        { path: source },
+      )
+      const binary = atob(base64)
+      const buf = new ArrayBuffer(binary.length)
+      const view = new Uint8Array(buf)
+      for (let i = 0; i < binary.length; i++) {
+        view[i] = binary.charCodeAt(i)
+      }
+
+      const token = getServerToken()
+      const form = new FormData()
+      form.append("file", new Blob([buf]), filename)
+
+      const res = await fetch(`${this.baseUrl}/api/v1/projects/${projectId}/sources`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { message?: string }
+        throw new Error(body.message ?? `HTTP ${res.status}`)
+      }
+    } catch (err) {
+      throw new Error(`ServerTransport.copyFile: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   async copyDirectory(_source: string, _destination: string): Promise<string[]> {
-    throw new Error("ServerTransport.copyDirectory: not supported in Phase 2")
+    throw new Error("ServerTransport.copyDirectory: folder import not supported in server mode")
   }
 
   async readFileAsBase64(_path: string): Promise<FileBase64> {
-    throw new Error("ServerTransport.readFileAsBase64: not supported in Phase 2")
+    throw new Error("ServerTransport.readFileAsBase64: not supported in server mode")
   }
 
-  async preprocessFile(_path: string): Promise<string> {
-    throw new Error("ServerTransport.preprocessFile: not supported in Phase 2")
+  async preprocessFile(path: string): Promise<string> {
+    // Best-effort: return extracted text via the server text endpoint.
+    // Image extraction (the other job of preprocess_file) is skipped in server mode.
+    try {
+      return await this.readFile(path)
+    } catch {
+      return ""
+    }
   }
 
   async findRelatedWikiPages(_projectPath: string, _sourceName: string): Promise<string[]> {

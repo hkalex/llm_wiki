@@ -129,8 +129,8 @@ export function ServerConnectionSection({ draft, setDraft }: Props) {
             </p>
           )}
 
-          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-            <strong>Phase 1 preview.</strong> Server Mode infrastructure is in place but the server-side HTTP API is not yet implemented. Switching to Server Mode will disable all wiki operations until Phase 2 ships.
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-300">
+            <strong>What works in Server Mode:</strong> wiki read/write, source upload and ingest (text, PDF, DOCX), project management, and authentication. Image extraction from binary files and folder import are not yet supported.
           </div>
         </div>
       )}

@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify"
 import { requireAuth } from "../auth/auth-middleware"
 import { assertProjectAccess } from "../projects/project-service"
 import { listSources, deleteSource, saveUploadedSource } from "./source-service"
+import { getSourceText } from "./source-text"
 import { BadRequestError } from "../shared/errors"
 
 export const sourceRoutes: FastifyPluginAsync = async (fastify) => {
@@ -33,6 +34,18 @@ export const sourceRoutes: FastifyPluginAsync = async (fastify) => {
 
       const source = saveUploadedSource(project.storagePath, data.filename, buffer)
       reply.code(201).send(source)
+    },
+  )
+
+  // GET /projects/:id/sources/~text/*path  → extracted text content
+  // Prefix-based to avoid ambiguity with source file paths ending in "text".
+  fastify.get<{ Params: { id: string; "*": string } }>(
+    "/~text/*",
+    { preHandler: [requireAuth] },
+    async (request) => {
+      const project = assertProjectAccess(request.params.id, request.user.id)
+      const text = await getSourceText(project.storagePath, request.params["*"])
+      return { text }
     },
   )
 

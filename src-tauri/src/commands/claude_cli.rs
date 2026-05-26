@@ -32,7 +32,16 @@ use tokio::sync::Mutex;
 /// frontend-generated stream id. Registered via .manage() in lib.rs.
 #[derive(Default)]
 pub struct ClaudeCliState {
-    children: Arc<Mutex<HashMap<String, Child>>>,
+    pub children: Arc<Mutex<HashMap<String, Child>>>,
+}
+
+/// Event emitted from the subprocess drain task.
+/// The Tauri command bridges these to `app.emit()`; the HTTP server
+/// bridges them to SSE. This keeps the subprocess logic transport-agnostic.
+#[derive(Debug)]
+pub enum ClaudeCliEvent {
+    Line(String),
+    Done { code: Option<i32>, stderr: String },
 }
 
 #[derive(Serialize)]
@@ -138,19 +147,27 @@ pub async fn claude_cli_detect() -> Result<DetectResult, String> {
     }
 }
 
-/// Spawn `claude -p --output-format stream-json --input-format stream-json
-/// --verbose --model <model>` and pipe stdout back to the frontend as
-/// `claude-cli:{stream_id}` events (one line per event). Closes stdin
-/// after writing the serialized history so claude starts processing.
-/// Emits a final `claude-cli:{stream_id}:done` event with `{ code }`
-/// when the child exits.
-#[tauri::command]
-pub async fn claude_cli_spawn(
-    app: AppHandle,
-    state: State<'_, ClaudeCliState>,
+/// Core subprocess logic, decoupled from Tauri event emission.
+///
+/// Spawns `claude`, writes the conversation to its stdin, and drains
+/// stdout line-by-line sending each event to `tx`. Callers decide how
+/// to forward events: the Tauri command bridges to `app.emit()`; the
+/// HTTP server bridges to SSE.
+///
+/// Returns immediately after spawning; the background drain task holds
+/// a clone of `tx` and drops it when the child exits (after sending
+/// `ClaudeCliEvent::Done`). The caller's receiver will then observe
+/// channel close.
+///
+/// `children` is the shared process map used by `claude_cli_kill`. Pass
+/// `Arc::clone(&state.children)` from the Tauri command, or a
+/// server-owned map for the HTTP transport.
+pub async fn claude_cli_spawn_inner(
+    children: Arc<Mutex<HashMap<String, Child>>>,
     stream_id: String,
     model: String,
     messages: Vec<ClaudeMessage>,
+    tx: tokio::sync::mpsc::Sender<ClaudeCliEvent>,
 ) -> Result<(), String> {
     // Build the turn list: fold any system messages into a preamble on
     // the first user turn rather than using a CLI flag, because
@@ -197,7 +214,6 @@ pub async fn claude_cli_spawn(
         .arg("--verbose")
         .arg("--model")
         .arg(&model);
-
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -250,27 +266,17 @@ pub async fn claude_cli_spawn(
         .map_err(|e| format!("Failed to flush claude stdin: {e}"))?;
     drop(stdin);
 
-    // Register the child so `claude_cli_kill` can reach it.
-    state.children.lock().await.insert(stream_id.clone(), child);
+    // Register the child so `claude_cli_kill` (or server equivalent) can reach it.
+    children.lock().await.insert(stream_id.clone(), child);
 
-    let children = Arc::clone(&state.children);
-    let app_for_task = app.clone();
     let stream_id_task = stream_id.clone();
-    let topic = format!("claude-cli:{stream_id}");
-    let done_topic = format!("claude-cli:{stream_id}:done");
-
-    // Drain stdout line-by-line in a background task, emitting each
-    // line as an event. Completes when stdout closes (child exited).
     tokio::spawn(async move {
         let mut reader = BufReader::new(stdout).lines();
         let mut stderr_reader = BufReader::new(stderr).lines();
-        let app = app_for_task;
 
         // Collect stderr in a background task so we can ship it with the
-        // final :done event — otherwise a non-zero exit produces only
-        // "exited with code N" with no diagnostic info on the frontend.
-        // Also echo each line to the tauri dev terminal so the developer
-        // can watch the CLI's stderr live while iterating.
+        // final Done event. Also echo each line to the terminal so the
+        // developer can watch the CLI's stderr live while iterating.
         let stderr_task = tokio::spawn(async move {
             let mut collected = String::new();
             while let Ok(Some(line)) = stderr_reader.next_line().await {
@@ -284,7 +290,7 @@ pub async fn claude_cli_spawn(
         loop {
             match reader.next_line().await {
                 Ok(Some(line)) => {
-                    if app.emit(&topic, line).is_err() {
+                    if tx.send(ClaudeCliEvent::Line(line)).await.is_err() {
                         break;
                     }
                 }
@@ -310,17 +316,55 @@ pub async fn claude_cli_spawn(
         };
 
         let stderr_text = stderr_task.await.unwrap_or_default();
-
-        let _ = app.emit(
-            &done_topic,
-            serde_json::json!({
-                "code": exit_code,
-                "stderr": stderr_text,
-            }),
-        );
+        let _ = tx
+            .send(ClaudeCliEvent::Done {
+                code: exit_code,
+                stderr: stderr_text,
+            })
+            .await;
     });
 
     Ok(())
+}
+
+/// Spawn `claude -p --output-format stream-json --input-format stream-json
+/// --verbose --model <model>` and pipe stdout back to the frontend as
+/// `claude-cli:{stream_id}` events (one line per event). Closes stdin
+/// after writing the serialized history so claude starts processing.
+/// Emits a final `claude-cli:{stream_id}:done` event with `{ code }`
+/// when the child exits.
+#[tauri::command]
+pub async fn claude_cli_spawn(
+    app: AppHandle,
+    state: State<'_, ClaudeCliState>,
+    stream_id: String,
+    model: String,
+    messages: Vec<ClaudeMessage>,
+) -> Result<(), String> {
+    let topic = format!("claude-cli:{stream_id}");
+    let done_topic = format!("claude-cli:{stream_id}:done");
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<ClaudeCliEvent>(64);
+
+    // Bridge channel events to Tauri events so existing frontend code is unchanged.
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                ClaudeCliEvent::Line(line) => {
+                    if app.emit(&topic, line).is_err() {
+                        break;
+                    }
+                }
+                ClaudeCliEvent::Done { code, stderr } => {
+                    let _ = app.emit(
+                        &done_topic,
+                        serde_json::json!({ "code": code, "stderr": stderr }),
+                    );
+                }
+            }
+        }
+    });
+
+    claude_cli_spawn_inner(Arc::clone(&state.children), stream_id, model, messages, tx).await
 }
 
 /// Kill a running child registered under `stream_id`. Called on

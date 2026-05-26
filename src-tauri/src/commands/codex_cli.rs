@@ -21,7 +21,20 @@ use tokio::sync::Mutex;
 
 #[derive(Default)]
 pub struct CodexCliState {
-    children: Arc<Mutex<HashMap<String, Child>>>,
+    pub children: Arc<Mutex<HashMap<String, Child>>>,
+}
+
+/// Event emitted from the Codex subprocess drain task.
+/// The Tauri command bridges these to `app.emit()`; the HTTP server
+/// bridges them to SSE.
+#[derive(Debug)]
+pub enum CodexCliEvent {
+    Line(String),
+    Done {
+        code: Option<i32>,
+        stderr: String,
+        stdout: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -132,13 +145,19 @@ pub async fn codex_cli_detect() -> Result<DetectResult, String> {
     }
 }
 
-#[tauri::command]
-pub async fn codex_cli_spawn(
-    app: AppHandle,
-    state: State<'_, CodexCliState>,
+/// Core subprocess logic for Codex, decoupled from Tauri event emission.
+///
+/// Spawns `codex exec --json`, writes the prompt to its stdin, and drains
+/// stdout line-by-line sending each event to `tx`. The Done event includes
+/// the full accumulated stdout (needed by the frontend for final parsing).
+///
+/// `children` is the shared process map used by `codex_cli_kill`.
+pub async fn codex_cli_spawn_inner(
+    children: Arc<Mutex<HashMap<String, Child>>>,
     stream_id: String,
     model: String,
     prompt: String,
+    tx: tokio::sync::mpsc::Sender<CodexCliEvent>,
 ) -> Result<(), String> {
     if prompt.trim().is_empty() {
         return Err("No prompt to send to codex CLI".to_string());
@@ -158,7 +177,6 @@ pub async fn codex_cli_spawn(
         .arg("--model")
         .arg(&model)
         .arg("-");
-
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -191,17 +209,13 @@ pub async fn codex_cli_spawn(
         .map_err(|e| format!("Failed to flush codex stdin: {e}"))?;
     drop(stdin);
 
-    state.children.lock().await.insert(stream_id.clone(), child);
+    children.lock().await.insert(stream_id.clone(), child);
 
-    let children = Arc::clone(&state.children);
-    let timeout_children = Arc::clone(&state.children);
+    let timeout_children = Arc::clone(&children);
     let timed_out = Arc::new(AtomicBool::new(false));
     let timeout_flag = Arc::clone(&timed_out);
     let timeout_stream_id = stream_id.clone();
-    let app_for_task = app.clone();
     let stream_id_task = stream_id.clone();
-    let topic = format!("codex-cli:{stream_id}");
-    let done_topic = format!("codex-cli:{stream_id}:done");
 
     tokio::spawn(async move {
         tokio::time::sleep(CODEX_SPAWN_TIMEOUT).await;
@@ -214,7 +228,6 @@ pub async fn codex_cli_spawn(
     tokio::spawn(async move {
         let mut reader = BufReader::new(stdout).lines();
         let mut stderr_reader = BufReader::new(stderr).lines();
-        let app = app_for_task;
 
         let stderr_task = tokio::spawn(async move {
             let mut collected = String::new();
@@ -230,7 +243,7 @@ pub async fn codex_cli_spawn(
             match reader.next_line().await {
                 Ok(Some(line)) => {
                     append_capped_line(&mut stdout_text, &line, STDOUT_LIMIT_BYTES);
-                    if app.emit(&topic, line).is_err() {
+                    if tx.send(CodexCliEvent::Line(line)).await.is_err() {
                         break;
                     }
                 }
@@ -271,17 +284,61 @@ pub async fn codex_cli_spawn(
             exit_code
         };
 
-        let _ = app.emit(
-            &done_topic,
-            serde_json::json!({
-                "code": code,
-                "stderr": stderr_text,
-                "stdout": stdout_text,
-            }),
-        );
+        let _ = tx
+            .send(CodexCliEvent::Done {
+                code,
+                stderr: stderr_text,
+                stdout: stdout_text,
+            })
+            .await;
     });
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn codex_cli_spawn(
+    app: AppHandle,
+    state: State<'_, CodexCliState>,
+    stream_id: String,
+    model: String,
+    prompt: String,
+) -> Result<(), String> {
+    let topic = format!("codex-cli:{stream_id}");
+    let done_topic = format!("codex-cli:{stream_id}:done");
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<CodexCliEvent>(64);
+
+    // Bridge channel events to Tauri events so existing frontend code is unchanged.
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                CodexCliEvent::Line(line) => {
+                    if app.emit(&topic, line).is_err() {
+                        break;
+                    }
+                }
+                CodexCliEvent::Done { code, stderr, stdout } => {
+                    let _ = app.emit(
+                        &done_topic,
+                        serde_json::json!({
+                            "code": code,
+                            "stderr": stderr,
+                            "stdout": stdout,
+                        }),
+                    );
+                }
+            }
+        }
+    });
+
+    codex_cli_spawn_inner(
+        Arc::clone(&state.children),
+        stream_id,
+        model,
+        prompt,
+        tx,
+    )
+    .await
 }
 
 #[tauri::command]

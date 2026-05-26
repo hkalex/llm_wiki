@@ -13,7 +13,7 @@
  * captioning lands, the same helper grows a `caption` field per
  * image and the markdown line uses that instead.
  */
-import { invoke } from "@tauri-apps/api/core"
+import { invoke } from "@/lib/transport"
 import { getFileName, normalizePath } from "@/lib/path-utils"
 
 /** Mirrors `commands::extract_images::SavedImage` on the Rust side. */

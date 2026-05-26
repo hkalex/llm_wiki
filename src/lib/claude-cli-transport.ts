@@ -10,8 +10,7 @@
  * and forwards assistant text to `onToken`.
  */
 
-import { invoke } from "@tauri-apps/api/core"
-import { listen, type UnlistenFn } from "@tauri-apps/api/event"
+import { invoke, listen } from "@/lib/transport"
 import type { LlmConfig } from "@/stores/wiki-store"
 import type { ChatMessage, RequestOverrides } from "./llm-providers"
 import type { StreamCallbacks } from "./llm-client"
@@ -140,8 +139,8 @@ export async function streamClaudeCodeCli(
   const streamId = crypto.randomUUID()
   const parse = createClaudeCodeStreamParser()
 
-  let unlistenData: UnlistenFn | undefined
-  let unlistenDone: UnlistenFn | undefined
+  let unlistenData: (() => void) | undefined
+  let unlistenDone: (() => void) | undefined
   let finished = false
 
   // Diagnostic capture for failure paths. The Rust side emits every
@@ -186,8 +185,8 @@ export async function streamClaudeCodeCli(
 
   try {
     // Listen FIRST so we don't miss the very first event on fast CLIs.
-    unlistenData = await listen<string>(`claude-cli:${streamId}`, (event) => {
-      const token = parse(event.payload)
+    unlistenData = await listen<string>(`claude-cli:${streamId}`, (payload) => {
+      const token = parse(payload)
       if (token !== null) {
         onToken(token)
       } else {
@@ -195,15 +194,15 @@ export async function streamClaudeCodeCli(
         // child later exits non-zero with empty stderr — at that
         // point this captured stdout is the only diagnostic the
         // user has.
-        captureUnparsed(event.payload)
+        captureUnparsed(payload)
       }
     })
 
     unlistenDone = await listen<{ code: number | null; stderr: string }>(
       `claude-cli:${streamId}:done`,
-      (event) => {
-        const code = event.payload?.code
-        const stderr = event.payload?.stderr?.trim() ?? ""
+      (payload) => {
+        const code = payload?.code
+        const stderr = payload?.stderr?.trim() ?? ""
         if (code !== null && code !== undefined && code !== 0) {
           finishWith(() =>
             onError(

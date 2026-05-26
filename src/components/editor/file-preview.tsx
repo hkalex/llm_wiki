@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react"
-import { convertFileSrc } from "@tauri-apps/api/core"
+import { convertFileSrc } from "@/lib/transport"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"

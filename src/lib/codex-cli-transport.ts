@@ -6,8 +6,7 @@
  * over stdin, and emits each JSONL stdout line back as `codex-cli:{streamId}`.
  */
 
-import { invoke } from "@tauri-apps/api/core"
-import { listen, type UnlistenFn } from "@tauri-apps/api/event"
+import { invoke, listen } from "@/lib/transport"
 import type { LlmConfig } from "@/stores/wiki-store"
 import type { ChatMessage, ContentBlock, RequestOverrides } from "./llm-providers"
 import type { StreamCallbacks } from "./llm-client"
@@ -82,8 +81,8 @@ export async function streamCodexCli(
   }
 
   const streamId = crypto.randomUUID()
-  let unlistenData: UnlistenFn | undefined
-  let unlistenDone: UnlistenFn | undefined
+  let unlistenData: (() => void) | undefined
+  let unlistenDone: (() => void) | undefined
   let finished = false
   let aborted = signal?.aborted ?? false
   let emittedAgentMessage = false
@@ -139,13 +138,13 @@ export async function streamCodexCli(
   signal?.addEventListener("abort", abortListener)
 
   try {
-    unlistenData = await listen<string>(`codex-cli:${streamId}`, (event) => {
-      const token = parseCodexCliLine(event.payload)
+    unlistenData = await listen<string>(`codex-cli:${streamId}`, (payload) => {
+      const token = parseCodexCliLine(payload)
       if (token !== null) {
         emittedAgentMessage = true
         onToken(token)
       } else {
-        captureUnparsed(event.payload)
+        captureUnparsed(payload)
       }
     })
     if (aborted || finished) {
@@ -155,10 +154,10 @@ export async function streamCodexCli(
 
     unlistenDone = await listen<{ code: number | null; stderr: string; stdout?: string }>(
       `codex-cli:${streamId}:done`,
-      (event) => {
-        const code = event.payload?.code
-        const stderr = event.payload?.stderr?.trim() ?? ""
-        const stdout = event.payload?.stdout ?? ""
+      (payload) => {
+        const code = payload?.code
+        const stderr = payload?.stderr?.trim() ?? ""
+        const stdout = payload?.stdout ?? ""
         if (code !== null && code !== undefined && code !== 0) {
           const details = stderr || stdout.trim() || unparsedLines.join("\n")
           finishWith(() =>

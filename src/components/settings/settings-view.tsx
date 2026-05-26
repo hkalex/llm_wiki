@@ -15,7 +15,7 @@ import {
   Server,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { invoke } from "@tauri-apps/api/core"
+import { invoke } from "@/lib/transport"
 import i18n from "@/i18n"
 import { Button } from "@/components/ui/button"
 import { useWikiStore } from "@/stores/wiki-store"

@@ -1,4 +1,4 @@
-import { listen, type UnlistenFn } from "@tauri-apps/api/event"
+import { listen } from "@/lib/transport"
 import { readFile, listDirectory } from "@/commands/fs"
 import {
   rescanProjectFiles,
@@ -20,8 +20,8 @@ import {
 } from "@/lib/source-lifecycle"
 import { isPathAllowedBySourceWatch, normalizeSourceWatchConfig } from "@/lib/source-watch-config"
 
-let unlistenQueue: UnlistenFn | null = null
-let unlistenChanged: UnlistenFn | null = null
+let unlistenQueue: (() => void) | null = null
+let unlistenChanged: (() => void) | null = null
 let startSeq = 0
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
 let pendingRefreshPaths = new Set<string>()
@@ -39,15 +39,15 @@ export async function startProjectFileSync(
   useFileSyncStore.getState().setRunning(true)
   useFileSyncStore.getState().setLastError(null)
 
-  unlistenQueue = await listen<FileSyncPayload>("file-sync://queue-updated", (event) => {
-    if (event.payload.projectId !== useWikiStore.getState().project?.id) return
-    useFileSyncStore.getState().setTasks(event.payload.tasks)
+  unlistenQueue = await listen<FileSyncPayload>("file-sync://queue-updated", (payload) => {
+    if (payload.projectId !== useWikiStore.getState().project?.id) return
+    useFileSyncStore.getState().setTasks(payload.tasks)
   })
 
-  unlistenChanged = await listen<FileSyncPayload>("file-sync://changed", (event) => {
+  unlistenChanged = await listen<FileSyncPayload>("file-sync://changed", (payload) => {
     const current = useWikiStore.getState().project
-    if (!current || event.payload.projectId !== current.id) return
-    scheduleRefreshAfterFileChanges(event.payload.tasks)
+    if (!current || payload.projectId !== current.id) return
+    scheduleRefreshAfterFileChanges(payload.tasks)
   })
 
   try {

@@ -25,7 +25,7 @@
  * the appropriate `convertFileSrc(...)` URL or the original src
  * verbatim.
  */
-import { convertFileSrc } from "@tauri-apps/api/core"
+import { convertFileSrc } from "@/lib/transport"
 import { normalizePath } from "@/lib/path-utils"
 
 const PASSTHROUGH_RE = /^(https?:|data:|blob:|file:|tauri:)/i

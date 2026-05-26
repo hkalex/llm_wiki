@@ -181,9 +181,9 @@ fn normalize_source_watch_config(config: Option<SourceWatchConfig>) -> SourceWat
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct FileSyncPayload {
-    project_id: String,
-    tasks: Vec<FileChangeTask>,
+pub struct FileSyncPayload {
+    pub project_id: String,
+    pub tasks: Vec<FileChangeTask>,
 }
 
 #[tauri::command]
@@ -607,7 +607,7 @@ fn sync_snapshot_paths(root: &Path, rels: BTreeSet<String>) -> Result<(), String
     })
 }
 
-fn enqueue_rescan_changes(
+pub fn enqueue_rescan_changes(
     root: &Path,
     project_id: &str,
     source_watch_config: &SourceWatchConfig,
@@ -696,7 +696,7 @@ fn enqueue_rescan_changes_for_prefixes(
     enqueue_paths(root, project_id, rels)
 }
 
-fn enqueue_paths(root: &Path, project_id: &str, rels: BTreeSet<String>) -> Result<(), String> {
+pub fn enqueue_paths(root: &Path, project_id: &str, rels: BTreeSet<String>) -> Result<(), String> {
     let snapshot = with_queue_lock(root, || read_snapshot(root))?;
     let now = now_ms();
     let mut changes = Vec::new();
@@ -804,7 +804,7 @@ fn process_queue(
     )
 }
 
-fn process_queue_inner(
+pub fn process_queue_inner(
     root: &Path,
     project_id: &str,
     mut on_queue: impl FnMut(&FileChangeQueue),

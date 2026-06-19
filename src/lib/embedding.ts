@@ -156,7 +156,14 @@ export async function fetchEmbedding(
       })
 
       if (resp.ok) {
-        const data = await resp.json()
+        // Provider responses vary (Google: embedding.values; Doubao:
+        // data.embedding; OpenAI: data[0].embedding) — shape is provider-
+        // dependent, so read defensively. Cast keeps this valid under both the
+        // browser (DOM) and server (Node) fetch typings.
+        const data = (await resp.json()) as {
+          embedding?: { values?: number[] }
+          data?: { embedding?: number[] } & Array<{ embedding?: number[] }>
+        }
         const embedding = isGoogleNative
           ? data?.embedding?.values ?? null
           : isDoubaoMultimodal

@@ -1,13 +1,17 @@
 /**
  * Tauri implementation of the `SearchEngine` capability — the Rust
  * `search_project` command (hybrid keyword + vector, RRF-merged). The Tauri
- * backend scans the filesystem on demand, so it only implements `search`;
- * the server impl adds incremental `indexPage`/`removePage` over Postgres FTS.
+ * backend scans the filesystem on demand, so it only implements `search`.
+ * `@tauri-apps/api/core` is imported lazily (per call); see filesystem.ts.
  */
 
-import { invoke } from "@tauri-apps/api/core"
 import { normalizePath } from "@/lib/path-utils"
 import type { SearchEngine, SearchEngineResponse } from "../types"
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const core = await import("@tauri-apps/api/core")
+  return core.invoke<T>(cmd, args)
+}
 
 export function createTauriSearchEngine(): SearchEngine {
   return {

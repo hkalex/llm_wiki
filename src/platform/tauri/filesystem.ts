@@ -2,11 +2,21 @@
  * Tauri implementation of the `Filesystem` capability. These are the
  * `invoke()` calls that previously lived inline in `src/commands/fs.ts`;
  * that module is now a thin shim delegating here via the platform registry.
+ *
+ * `@tauri-apps/api/core` is imported LAZILY (per call) so that merely importing
+ * `@/platform` — which the reusable core does, transitively — does not pull the
+ * Tauri bindings into a Node bundle. On the desktop app the dynamic import
+ * resolves to the real (or, in tests, mocked) module; on the server these
+ * methods are never called (Node adapters are installed via setPlatform).
  */
 
-import { invoke } from "@tauri-apps/api/core"
 import { isAbsolutePath } from "@/lib/path-utils"
 import type { FileBase64, FileNode, Filesystem, ReadFileOptions } from "../types"
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const core = await import("@tauri-apps/api/core")
+  return core.invoke<T>(cmd, args)
+}
 
 function assertAbsoluteFsPath(operation: string, path: string): void {
   if (!isAbsolutePath(path)) {
@@ -43,7 +53,7 @@ export function createTauriFilesystem(): Filesystem {
     },
 
     copyFile(source: string, destination: string): Promise<void> {
-      return invoke("copy_file", { source, destination })
+      return invoke<void>("copy_file", { source, destination })
     },
 
     copyDirectory(source: string, destination: string): Promise<string[]> {
@@ -55,7 +65,7 @@ export function createTauriFilesystem(): Filesystem {
     },
 
     deleteFile(path: string): Promise<void> {
-      return invoke("delete_file", { path })
+      return invoke<void>("delete_file", { path })
     },
 
     createDirectory(path: string): Promise<void> {

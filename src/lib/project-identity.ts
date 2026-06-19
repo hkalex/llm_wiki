@@ -13,7 +13,6 @@
  *     `{ [id]: { id, path, name, lastOpened } }`
  */
 
-import { load } from "@tauri-apps/plugin-store"
 import { readFile, writeFile } from "@/commands/fs"
 import { normalizePath } from "@/lib/path-utils"
 
@@ -70,6 +69,9 @@ export async function ensureProjectId(projectPath: string): Promise<string> {
 // ── Global registry (Tauri plugin-store) ──────────────────────────────────
 
 async function getStore() {
+  // Lazy import keeps the Tauri plugin-store binding out of Node bundles that
+  // transitively import this module (the desktop app resolves it on demand).
+  const { load } = await import("@tauri-apps/plugin-store")
   return load(STORE_NAME, { autoSave: true, defaults: {} })
 }
 

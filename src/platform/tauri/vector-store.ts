@@ -1,13 +1,16 @@
 /**
  * Tauri implementation of the `VectorStore` capability — LanceDB v2 via the
- * Rust `vector_*` commands. These bodies previously lived inline in
- * `src/lib/embedding.ts`, including the Rust-serialization concerns
- * (snake_case keys, `Math.fround` to f32, path normalization).
+ * Rust `vector_*` commands. `@tauri-apps/api/core` is imported lazily (per
+ * call) so importing `@/platform` stays Node-safe; see filesystem.ts.
  */
 
-import { invoke } from "@tauri-apps/api/core"
 import { normalizePath } from "@/lib/path-utils"
 import type { ChunkSearchResult, VectorStore } from "../types"
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const core = await import("@tauri-apps/api/core")
+  return core.invoke<T>(cmd, args)
+}
 
 export function createTauriVectorStore(): VectorStore {
   return {

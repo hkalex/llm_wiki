@@ -35,7 +35,7 @@ export function resetPlatform(): void {
   }
 }
 
-const isBrowserEnv = typeof window !== "undefined"
+const isBrowserEnv = "window" in globalThis
 
 function missing(capability: string): never {
   throw new Error(

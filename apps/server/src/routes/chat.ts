@@ -16,6 +16,7 @@ import { search } from "../platform/pg-search-engine"
 import { readText } from "../platform/node-filesystem"
 import { safeJoin } from "../util/safe-join"
 import { getServerLlmConfig } from "../llm/server-config"
+import { embedQuery } from "../llm/embed"
 import { streamChat } from "@/lib/llm-client"
 import type { StreamCallbacks } from "@/lib/llm-client"
 import type { ChatMessage } from "@/lib/llm-providers"
@@ -30,7 +31,10 @@ function sse(reply: FastifyReply, event: string, data: unknown): void {
 }
 
 async function buildContext(projectId: string, projectPath: string, queryText: string) {
-  const hits = await search(projectId, queryText, { topK: 5 })
+  // Hybrid RAG: embed the query (vector side) when an embedding provider is
+  // configured; otherwise keyword-only. search() fuses both via RRF.
+  const queryEmbedding = await embedQuery(queryText)
+  const hits = await search(projectId, queryText, { topK: 5, queryEmbedding })
   const refs = hits.results.map((r) => ({ path: r.path, title: r.title }))
   let context = ""
   for (const r of hits.results.slice(0, 5)) {

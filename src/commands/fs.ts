@@ -7,13 +7,21 @@
  * app-control commands below remain Tauri-only desktop-shell concerns and
  * still call `invoke()` directly.
  */
-import { invoke } from "@tauri-apps/api/core"
 import type { FileNode, WikiProject } from "@/types/wiki"
 import { ensureProjectId, upsertProjectInfo } from "@/lib/project-identity"
 import { getFilesystem } from "@/platform"
 import type { FileBase64, ReadFileOptions } from "@/platform"
 
 export type { FileBase64 } from "@/platform"
+
+// Tauri bindings are imported lazily so importing this module (which the
+// reusable core does, transitively) does not pull @tauri-apps into a Node
+// bundle. The desktop-shell commands below resolve the real (or mocked) module
+// on first call; on the server these are never invoked.
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const core = await import("@tauri-apps/api/core")
+  return core.invoke<T>(cmd, args)
+}
 
 /** Raw shape returned by the Rust commands — id is attached client-side. */
 interface RawProject {

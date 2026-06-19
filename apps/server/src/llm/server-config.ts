@@ -4,11 +4,18 @@
  * thin clients. Shape matches core's LlmConfig (reused by streamChat).
  */
 import { query } from "../db/pool"
-import type { LlmConfig } from "@/stores/wiki-store"
+import type { EmbeddingConfig, LlmConfig } from "@/stores/wiki-store"
 
 export async function getServerLlmConfig(): Promise<LlmConfig | null> {
   const rows = await query<{ value: LlmConfig }>(
     "SELECT value FROM server_config WHERE key = 'llm' LIMIT 1",
+  )
+  return rows[0]?.value ?? null
+}
+
+export async function getServerEmbeddingConfig(): Promise<EmbeddingConfig | null> {
+  const rows = await query<{ value: EmbeddingConfig }>(
+    "SELECT value FROM server_config WHERE key = 'embedding' LIMIT 1",
   )
   return rows[0]?.value ?? null
 }

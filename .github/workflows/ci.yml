@@ -49,6 +49,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Run unit tests (mocks)
+        run: npm run test:mocks
+
       - name: Check frontend build
         run: npx vite build
 

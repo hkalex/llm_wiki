@@ -16,6 +16,8 @@ import { requireScope, canAccessProject } from "../auth/auth"
 import { loadProject } from "./helpers"
 import { resolveProject } from "../platform/pg-storage"
 import { query } from "../db/pool"
+import { materializeSourceItem } from "../ingest/materialize"
+import { enqueueIngest } from "../jobs/queue"
 import type { IngestItemDto } from "../types"
 
 function sha256(text: string): string {
@@ -68,16 +70,22 @@ export async function ingestRoutes(app: FastifyInstance): Promise<void> {
           skipped.push(item.externalId)
           continue
         }
+        // Materialize to raw/sources/<folder>/<slug>.md (files = source of truth).
+        const relPath = await materializeSourceItem(project.id, item)
         await query(
           `INSERT INTO ingest_cache (project_id, source_name, external_id, hash, ts)
            VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT (project_id, source_name)
            DO UPDATE SET external_id = EXCLUDED.external_id, hash = EXCLUDED.hash, ts = EXCLUDED.ts`,
-          [project.id, `scraper/${item.externalId}`, item.externalId, hash, Date.now()],
+          [project.id, relPath, item.externalId, hash, Date.now()],
         )
+        // Enqueue for the (serial) ingest worker, which runs the core pipeline.
+        await enqueueIngest({
+          projectId: project.id,
+          sourceRelPath: relPath,
+          externalId: item.externalId,
+        })
         accepted.push(item.externalId)
-        // TODO(phase2): materialize to raw/sources/<folder>/<slug>.md and
-        // enqueue an ingest job (pg-boss, concurrency 1 per project).
       }
       return reply
         .code(202)

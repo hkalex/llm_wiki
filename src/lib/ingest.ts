@@ -11,6 +11,7 @@ import {
 import { streamChat } from "@/lib/llm-client"
 import type { LlmConfig } from "@/stores/wiki-store"
 import { useWikiStore } from "@/stores/wiki-store"
+import { getConfig } from "@/platform"
 import { parseWithMineru } from "@/lib/mineru"
 import { useChatStore } from "@/stores/chat-store"
 import { useActivityStore } from "@/stores/activity-store"
@@ -508,7 +509,7 @@ async function autoIngestImpl(
   // ── MinerU preprocessing for PDF files ──
   const lowerExt = fileName.includes(".") ? fileName.split(".").pop()?.toLowerCase() : ""
   const isPdf = lowerExt === "pdf"
-  const mineruCfg = useWikiStore.getState().mineruConfig
+  const mineruCfg = getConfig().getMineruConfig()
   let mineruSucceeded = false
   if (isPdf && mineruCfg.enabled && mineruCfg.token) {
     try {
@@ -586,7 +587,7 @@ async function autoIngestImpl(
         // doesn't proactively scrub old wiki content. The user
         // would need to delete the wiki/sources/<slug>.md page
         // to start clean.)
-        const mmCfg = useWikiStore.getState().multimodalConfig
+        const mmCfg = getConfig().getMultimodalConfig()
         if (!mmCfg.enabled) {
           console.log(
             `[ingest:caption] cache-hit + disabled — skipping caption + safety-net inject (${savedImages.length} image(s) untouched on disk)`,
@@ -716,7 +717,7 @@ async function autoIngestImpl(
     pp,
     appendSavedImageRefsForCaption(sourceContent, savedImages),
   )
-  const mmCfg = useWikiStore.getState().multimodalConfig
+  const mmCfg = getConfig().getMultimodalConfig()
   const captionLlm = resolveCaptionConfig(mmCfg, llmConfig)
   if (!mmCfg.enabled && savedImages.length > 0) {
     // Strip `![alt](url)` references — match the same regex shape
@@ -1126,7 +1127,7 @@ async function autoIngestImpl(
   }
 
   // ── Step 6: Generate embeddings (if enabled) ───────────────
-  const embCfg = useWikiStore.getState().embeddingConfig
+  const embCfg = getConfig().getEmbeddingConfig()
   if (embCfg.enabled && embCfg.model && writtenPaths.length > 0) {
     try {
       const { embedPage } = await import("@/lib/embedding")
@@ -1533,7 +1534,7 @@ async function writeFileBlocks(
   const hardFailures: string[] = []
   const projectSchemaRouting = await loadProjectWikiSchemaRouting(projectPath)
 
-  const targetLang = useWikiStore.getState().outputLanguage
+  const targetLang = getConfig().getOutputLanguage()
   const today = currentWikiDate()
 
   for (const { path: rawRelativePath, content: rawContent } of blocks) {
@@ -2744,7 +2745,7 @@ async function reembedSourceSummary(
   sourceIdentity: string,
   sourceSummarySlug: string,
 ): Promise<void> {
-  const embCfg = useWikiStore.getState().embeddingConfig
+  const embCfg = getConfig().getEmbeddingConfig()
   if (!embCfg.enabled || !embCfg.model) return
   const sourceSummaryFullPath = `${pp}/wiki/sources/${sourceSummarySlug}.md`
   try {
@@ -3020,7 +3021,7 @@ export async function executeIngestWrites(
   // the full rationale. When captioning is disabled, we skip the
   // safety-net inject here too so the executeIngestWrites path
   // stays consistent with autoIngest.
-  const mmCfgWrites = useWikiStore.getState().multimodalConfig
+  const mmCfgWrites = getConfig().getMultimodalConfig()
   if (ingestSource && mmCfgWrites.enabled) {
     let extractionKey: string | null = null
     try {

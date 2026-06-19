@@ -21,7 +21,7 @@
  */
 
 import { readFile, listDirectory } from "@/commands/fs"
-import { invoke } from "@tauri-apps/api/core"
+import { getVectorStore } from "@/platform"
 import type { EmbeddingConfig } from "@/stores/wiki-store"
 import type { FileNode } from "@/types/wiki"
 import { normalizePath } from "@/lib/path-utils"
@@ -363,7 +363,12 @@ function doubaoMultimodalEmbeddingBody(model: string, text: string): Record<stri
   }
 }
 
-// ── LanceDB v2 operations (via Rust Tauri commands) ──────────────────────
+// ── Vector store operations (delegated to the platform VectorStore) ──────
+// The concrete store — LanceDB on the Tauri desktop app, pgvector on the
+// server — lives behind the platform seam (see src/platform). These thin
+// wrappers keep the existing call sites and the ChunkUpsertInput /
+// ChunkSearchResult shapes unchanged; Rust-serialization concerns
+// (snake_case, Math.fround, path normalization) moved into the Tauri adapter.
 
 interface ChunkUpsertInput {
   chunkIndex: number
@@ -377,16 +382,7 @@ async function vectorUpsertChunks(
   pageId: string,
   chunks: ChunkUpsertInput[],
 ): Promise<void> {
-  await invoke("vector_upsert_chunks", {
-    projectPath: normalizePath(projectPath),
-    pageId,
-    chunks: chunks.map((c) => ({
-      chunk_index: c.chunkIndex,
-      chunk_text: c.chunkText,
-      heading_path: c.headingPath,
-      embedding: c.embedding.map((v) => Math.fround(v)),
-    })),
-  })
+  await getVectorStore().upsertChunks(projectPath, pageId, chunks)
 }
 
 interface ChunkSearchResult {
@@ -403,52 +399,31 @@ async function vectorSearchChunks(
   queryEmbedding: number[],
   topK: number,
 ): Promise<ChunkSearchResult[]> {
-  return await invoke("vector_search_chunks", {
-    projectPath: normalizePath(projectPath),
-    queryEmbedding: queryEmbedding.map((v) => Math.fround(v)),
-    topK,
-  })
+  return await getVectorStore().searchChunks(projectPath, queryEmbedding, topK)
 }
 
 async function vectorDeletePage(projectPath: string, pageId: string): Promise<void> {
-  await invoke("vector_delete_page", {
-    projectPath: normalizePath(projectPath),
-    pageId,
-  })
+  await getVectorStore().deletePage(projectPath, pageId)
 }
 
 async function vectorCountChunks(projectPath: string): Promise<number> {
-  return await invoke("vector_count_chunks", {
-    projectPath: normalizePath(projectPath),
-  })
+  return await getVectorStore().countChunks(projectPath)
 }
 
 async function vectorClearChunks(projectPath: string): Promise<void> {
-  await invoke("vector_clear_chunks", {
-    projectPath: normalizePath(projectPath),
-  })
+  await getVectorStore().clearChunks(projectPath)
 }
 
 async function vectorOptimizeChunks(projectPath: string): Promise<void> {
-  await invoke("vector_optimize_chunks", {
-    projectPath: normalizePath(projectPath),
-  })
+  await getVectorStore().optimizeChunks(projectPath)
 }
 
 export async function legacyVectorRowCount(projectPath: string): Promise<number> {
-  try {
-    return await invoke("vector_legacy_row_count", {
-      projectPath: normalizePath(projectPath),
-    })
-  } catch {
-    return 0
-  }
+  return await getVectorStore().legacyRowCount(projectPath)
 }
 
 export async function dropLegacyVectorTable(projectPath: string): Promise<void> {
-  await invoke("vector_drop_legacy", {
-    projectPath: normalizePath(projectPath),
-  })
+  await getVectorStore().dropLegacy(projectPath)
 }
 
 export async function clearChunkVectorTable(projectPath: string): Promise<void> {

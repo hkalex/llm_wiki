@@ -1,6 +1,5 @@
-import { invoke } from "@tauri-apps/api/core"
 import { normalizePath } from "@/lib/path-utils"
-import { useWikiStore } from "@/stores/wiki-store"
+import { getConfig, getSearchEngine } from "@/platform"
 
 export interface ImageRef {
   url: string
@@ -15,15 +14,6 @@ export interface SearchResult {
   score: number
   vectorScore?: number
   images: ImageRef[]
-}
-
-interface BackendSearchResponse {
-  // Reserved for result badges/debug UI. The backend already returns these
-  // signals so API and WebView search share the same retrieval contract.
-  mode: "keyword" | "vector" | "hybrid"
-  results: SearchResult[]
-  tokenHits: number
-  vectorHits: number
 }
 
 const STOP_WORDS = new Set([
@@ -64,11 +54,9 @@ export async function searchWiki(
 ): Promise<SearchResult[]> {
   if (!query.trim()) return []
   const pp = normalizePath(projectPath)
-  const embCfg = useWikiStore.getState().embeddingConfig
+  const embCfg = getConfig().getEmbeddingConfig()
 
-  const response = await invoke<BackendSearchResponse>("search_project", {
-    projectPath: pp,
-    query,
+  const response = await getSearchEngine().search(pp, query, {
     topK: 20,
     includeContent: false,
     queryEmbedding: null,

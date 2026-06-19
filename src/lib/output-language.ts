@@ -1,4 +1,4 @@
-import { useWikiStore } from "@/stores/wiki-store"
+import { getConfig } from "@/platform"
 import { detectLanguage } from "./detect-language"
 import { getLanguagePromptName } from "./language-metadata"
 
@@ -9,7 +9,7 @@ import { getLanguagePromptName } from "./language-metadata"
  * Otherwise (auto), fall back to detecting the language from the given text.
  */
 export function getOutputLanguage(fallbackText: string = ""): string {
-  const configured = useWikiStore.getState().outputLanguage
+  const configured = getConfig().getOutputLanguage()
   if (configured && configured !== "auto") {
     return configured
   }

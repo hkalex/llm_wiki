@@ -1,7 +1,19 @@
+/**
+ * Filesystem + project commands.
+ *
+ * The plain file operations are now a thin shim over the platform registry
+ * (`src/platform`), so the same call sites work on the Tauri desktop app
+ * (LanceDB/Rust-backed) and on the Node server. The project-management and
+ * app-control commands below remain Tauri-only desktop-shell concerns and
+ * still call `invoke()` directly.
+ */
 import { invoke } from "@tauri-apps/api/core"
 import type { FileNode, WikiProject } from "@/types/wiki"
 import { ensureProjectId, upsertProjectInfo } from "@/lib/project-identity"
-import { isAbsolutePath } from "@/lib/path-utils"
+import { getFilesystem } from "@/platform"
+import type { FileBase64, ReadFileOptions } from "@/platform"
+
+export type { FileBase64 } from "@/platform"
 
 /** Raw shape returned by the Rust commands — id is attached client-side. */
 interface RawProject {
@@ -9,95 +21,62 @@ interface RawProject {
   path: string
 }
 
-export async function readFile(
-  path: string,
-  options?: { extractImages?: boolean },
-): Promise<string> {
-  return invoke<string>("read_file", {
-    path,
-    extractImages: options?.extractImages,
-  })
+// ── Filesystem ops (delegated to the platform Filesystem capability) ──────
+
+export function readFile(path: string, options?: ReadFileOptions): Promise<string> {
+  return getFilesystem().readFile(path, options)
 }
 
-export async function writeFile(path: string, contents: string): Promise<void> {
-  assertAbsoluteFsPath("writeFile", path)
-  return invoke<void>("write_file", { path, contents })
+export function writeFile(path: string, contents: string): Promise<void> {
+  return getFilesystem().writeFile(path, contents)
 }
 
-export async function writeFileBase64(path: string, base64: string): Promise<void> {
-  assertAbsoluteFsPath("writeFileBase64", path)
-  return invoke<void>("write_file_base64", { path, base64 })
+export function writeFileBase64(path: string, base64: string): Promise<void> {
+  return getFilesystem().writeFileBase64(path, base64)
 }
 
-export async function writeFileAtomic(path: string, contents: string): Promise<void> {
-  assertAbsoluteFsPath("writeFileAtomic", path)
-  return invoke<void>("write_file_atomic", { path, contents })
+export function writeFileAtomic(path: string, contents: string): Promise<void> {
+  return getFilesystem().writeFileAtomic(path, contents)
 }
 
-export async function listDirectory(path: string): Promise<FileNode[]> {
-  return invoke<FileNode[]>("list_directory", { path })
+export function listDirectory(path: string): Promise<FileNode[]> {
+  return getFilesystem().listDirectory(path)
 }
 
-export async function copyFile(
-  source: string,
-  destination: string
-): Promise<void> {
-  return invoke("copy_file", { source, destination })
+export function copyFile(source: string, destination: string): Promise<void> {
+  return getFilesystem().copyFile(source, destination)
 }
 
-export async function copyDirectory(
-  source: string,
-  destination: string
-): Promise<string[]> {
-  return invoke<string[]>("copy_directory", { source, destination })
+export function copyDirectory(source: string, destination: string): Promise<string[]> {
+  return getFilesystem().copyDirectory(source, destination)
 }
 
-export async function preprocessFile(path: string): Promise<string> {
-  return invoke<string>("preprocess_file", { path })
+export function preprocessFile(path: string): Promise<string> {
+  return getFilesystem().preprocessFile(path)
 }
 
-export async function deleteFile(path: string): Promise<void> {
-  return invoke("delete_file", { path })
+export function deleteFile(path: string): Promise<void> {
+  return getFilesystem().deleteFile(path)
 }
 
-export async function findRelatedWikiPages(
-  projectPath: string,
-  sourceName: string
-): Promise<string[]> {
-  return invoke<string[]>("find_related_wiki_pages", { projectPath, sourceName })
+export function createDirectory(path: string): Promise<void> {
+  return getFilesystem().createDirectory(path)
 }
 
-export async function createDirectory(path: string): Promise<void> {
-  assertAbsoluteFsPath("createDirectory", path)
-  return invoke<void>("create_directory", { path })
+export function fileExists(path: string): Promise<boolean> {
+  return getFilesystem().fileExists(path)
 }
 
-export async function fileExists(path: string): Promise<boolean> {
-  return invoke<boolean>("file_exists", { path })
+export function getFileModifiedTime(path: string): Promise<number> {
+  return getFilesystem().getFileModifiedTime(path)
 }
 
-export async function getFileModifiedTime(path: string): Promise<number> {
-  return invoke<number>("get_file_modified_time", { path })
+export function getFileSize(path: string): Promise<number> {
+  return getFilesystem().getFileSize(path)
 }
 
-export async function getFileSize(path: string): Promise<number> {
-  return invoke<number>("get_file_size", { path })
-}
-
-export async function getFileMd5(path: string): Promise<string> {
-  return invoke<string>("get_file_md5", { path })
-}
-
-function assertAbsoluteFsPath(operation: string, path: string): void {
-  if (!isAbsolutePath(path)) {
-    throw new Error(`${operation} requires an absolute path: ${path}`)
-  }
-}
-
-/** Mirror of `commands::fs::FileBase64` (Rust side). */
-export interface FileBase64 {
-  base64: string
-  mimeType: string
+export function getFileMd5(path: string): Promise<string> {
+  return getFilesystem().getFileMd5(path)
 }
 
 /**
@@ -106,8 +85,17 @@ export interface FileBase64 {
  * without having to read them as UTF-8 strings (PNG bytes aren't
  * valid UTF-8 — `readFile` would corrupt them).
  */
-export async function readFileAsBase64(path: string): Promise<FileBase64> {
-  return invoke<FileBase64>("read_file_as_base64", { path })
+export function readFileAsBase64(path: string): Promise<FileBase64> {
+  return getFilesystem().readFileAsBase64(path)
+}
+
+// ── Project management + app-control (Tauri desktop-shell only) ───────────
+
+export async function findRelatedWikiPages(
+  projectPath: string,
+  sourceName: string
+): Promise<string[]> {
+  return invoke<string[]>("find_related_wiki_pages", { projectPath, sourceName })
 }
 
 export async function createProject(

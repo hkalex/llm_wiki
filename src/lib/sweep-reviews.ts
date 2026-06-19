@@ -14,6 +14,7 @@ import { listDirectory, readFile } from "@/commands/fs"
 import { useReviewStore, type ReviewItem } from "@/stores/review-store"
 import { useActivityStore } from "@/stores/activity-store"
 import { useWikiStore } from "@/stores/wiki-store"
+import { getConfig } from "@/platform"
 import { streamChat } from "@/lib/llm-client"
 import type { FileNode } from "@/types/wiki"
 import { normalizePath } from "@/lib/path-utils"
@@ -195,7 +196,7 @@ async function judgeBatch(
 ): Promise<Set<string>> {
   if (batch.length === 0 || signal?.aborted) return new Set()
 
-  const llmConfig = useWikiStore.getState().llmConfig
+  const llmConfig = getConfig().getLlmConfig()
   if (!hasUsableLlm(llmConfig)) return new Set()
 
   const pages = index.pages.slice(0, MAX_PAGES_IN_PROMPT)

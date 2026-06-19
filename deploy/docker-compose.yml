@@ -1,0 +1,69 @@
+# LLM Wiki — one compose for home server AND cloud (differences are env-only;
+# see .env.example). Brings up Postgres+pgvector and the API server. The Caddy
+# reverse proxy (automatic HTTPS) is opt-in via the "tls" profile for remote
+# access:  docker compose --profile tls up -d
+#
+#   cp deploy/.env.example deploy/.env   # then edit secrets
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
+
+name: llm-wiki
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-llmwiki}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-llmwiki}
+      POSTGRES_DB: ${POSTGRES_DB:-llmwiki}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-llmwiki} -d ${POSTGRES_DB:-llmwiki}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  server:
+    build:
+      context: ..
+      dockerfile: deploy/server.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      HOST: 0.0.0.0
+      DATABASE_URL: postgres://${POSTGRES_USER:-llmwiki}:${POSTGRES_PASSWORD:-llmwiki}@db:5432/${POSTGRES_DB:-llmwiki}
+      DATA_DIR: /data/projects
+      LLM_WIKI_AUTH_TOKEN: ${LLM_WIKI_AUTH_TOKEN:-}
+      ALLOW_UNAUTHENTICATED: ${ALLOW_UNAUTHENTICATED:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
+    volumes:
+      - projectfiles:/data/projects
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    profiles: ["tls"]
+    depends_on:
+      - server
+    environment:
+      TLS_DOMAIN: ${TLS_DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
+volumes:
+  pgdata:
+  projectfiles:
+  caddydata:
+  caddyconfig:

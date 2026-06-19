@@ -1,0 +1,12 @@
+# Caddy reverse proxy with automatic HTTPS (Let's Encrypt). Used only with the
+# "tls" profile. Set TLS_DOMAIN in deploy/.env to your public hostname.
+#
+# Critically, SSE (the /chat stream) must not be buffered — Caddy's reverse
+# proxy does not buffer by default, which is what we want.
+
+{$TLS_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy server:8080 {
+		flush_interval -1
+	}
+}

@@ -20,6 +20,9 @@ export default defineConfig(async () => ({
 
   define: {
     __APP_VERSION__: JSON.stringify(pkgJson.version),
+    // "tauri" (default desktop) or "web" (browser/PWA thin client). Set via
+    // `CLIENT_TARGET=web npm run build` for the web/PWA build.
+    __CLIENT_TARGET__: JSON.stringify(process.env.CLIENT_TARGET ?? "tauri"),
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

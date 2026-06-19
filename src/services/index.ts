@@ -10,6 +10,16 @@ import type { DataService } from "./types"
 export * from "./types"
 export { ApiError } from "./http/api-client"
 
+/** The build target — "tauri" (desktop) or "web" (browser/PWA). */
+export function getClientTarget(): "tauri" | "web" {
+  return typeof __CLIENT_TARGET__ === "undefined" ? "tauri" : __CLIENT_TARGET__
+}
+
+/** True when running as a server-backed thin client (browser/PWA). */
+export function isWebTarget(): boolean {
+  return getClientTarget() === "web"
+}
+
 const TOKEN_KEY = "llm-wiki.api-token"
 const BASE_URL_KEY = "llm-wiki.server-url"
 

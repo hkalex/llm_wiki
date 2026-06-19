@@ -7,6 +7,7 @@ import path from "node:path"
 import { canAccessProject, requireScope } from "../auth/auth"
 import { listProjects } from "../platform/pg-storage"
 import { exists, listTree, readText } from "../platform/node-filesystem"
+import { buildFileGraph } from "../platform/file-graph"
 import { isPublicProjectRel, safeJoin } from "../util/safe-join"
 import { query } from "../db/pool"
 import { loadProject } from "./helpers"
@@ -110,15 +111,15 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
     },
   )
 
-  // Graph endpoint — stub until the core wiki-graph extraction is wired server
-  // side (Phase 2). Returns an empty graph so clients/MCP don't error.
+  // File-based graph from wiki frontmatter + [[wikilinks]]. (The richer
+  // relevance-weighted graph from core can replace this later.)
   app.get<{ Params: { id: string } }>(
     "/api/v1/projects/:id/graph",
     client,
     async (request, reply) => {
       const project = await loadProject(request, reply)
       if (!project) return
-      return { nodes: [], edges: [] }
+      return buildFileGraph(project.path)
     },
   )
 }

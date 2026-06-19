@@ -21,6 +21,8 @@ export interface ServerConfig {
   corsOrigins: string
   /** Vector backend selector — only "pgvector" implemented server-side today. */
   vectorBackend: "pgvector"
+  /** If set, serve the built web app (SPA) from this dir for single-origin. */
+  webDir: string | null
 }
 
 function int(name: string, fallback: number): number {
@@ -50,5 +52,6 @@ export function loadConfig(): ServerConfig {
     embeddingDim: int("EMBEDDING_DIM", 1536),
     corsOrigins: process.env.CORS_ORIGINS ?? "*",
     vectorBackend: "pgvector",
+    webDir: process.env.WEB_DIR ?? null,
   }
 }

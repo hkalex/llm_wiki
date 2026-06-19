@@ -76,7 +76,7 @@ export async function streamCodexCli(
 ): Promise<void> {
   const { onToken, onDone, onError } = callbacks
 
-  if (import.meta.env?.DEV && overrides) {
+  if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV && overrides) {
     for (const key of ["temperature", "top_p", "top_k", "max_tokens", "stop"] as const) {
       if (overrides[key] !== undefined) {
         // eslint-disable-next-line no-console

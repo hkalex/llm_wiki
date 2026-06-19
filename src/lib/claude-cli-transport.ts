@@ -131,7 +131,7 @@ export async function streamClaudeCodeCli(
   // dev so a caller wiring these up doesn't silently wonder why they
   // don't take effect; keep quiet in prod so regular users aren't
   // alarmed by a reasonable default.
-  if (import.meta.env?.DEV && overrides) {
+  if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV && overrides) {
     for (const key of ["temperature", "top_p", "top_k", "max_tokens", "stop"] as const) {
       if (overrides[key] !== undefined) {
         // eslint-disable-next-line no-console

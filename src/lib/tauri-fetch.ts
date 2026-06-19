@@ -26,7 +26,7 @@ let pluginFetchPromise: Promise<typeof globalThis.fetch> | null = null
  * time, so we must avoid invoking it — guard BEFORE the dynamic
  * import rather than trying to .catch() an error that happens later.
  */
-const isNodeEnv = typeof window === "undefined"
+const isNodeEnv = !("window" in globalThis)
 
 /**
  * Returns a fetch function that routes through Tauri's HTTP plugin in

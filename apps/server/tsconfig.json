@@ -16,7 +16,8 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "verbatimModuleSyntax": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": { "@/*": ["../../src/*"] }
   },
   "include": ["src"]
 }

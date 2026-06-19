@@ -13,9 +13,16 @@
  * captioning lands, the same helper grows a `caption` field per
  * image and the markdown line uses that instead.
  */
-import { invoke } from "@tauri-apps/api/core"
 import { copyFile, createDirectory, fileExists, readFileAsBase64 } from "@/commands/fs"
 import { getFileName, normalizePath } from "@/lib/path-utils"
+
+// Lazy import keeps @tauri-apps out of Node bundles that transitively import
+// this module (PDF image extraction is desktop-only; on the server this isn't
+// reached for markdown sources).
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const core = await import("@tauri-apps/api/core")
+  return core.invoke<T>(cmd, args)
+}
 
 /** Mirrors `commands::extract_images::SavedImage` on the Rust side. */
 export interface SavedImage {

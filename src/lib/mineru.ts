@@ -72,7 +72,7 @@ interface MineruAssetOptions {
 
 // ── API calls ──
 
-async function mineruHeaders(token: string): Promise<HeadersInit> {
+async function mineruHeaders(token: string): Promise<Record<string, string>> {
   return {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
@@ -351,7 +351,7 @@ async function submitUrlTask(
     body: JSON.stringify({ url, model_version: modelVersion }),
   })
   if (!res.ok) throw new Error(`MinerU submit failed: HTTP ${res.status}`)
-  const json: TaskResponse = await res.json()
+  const json = (await res.json()) as TaskResponse
   assertMineruSuccess(json)
   return json.data.task_id
 }
@@ -378,7 +378,7 @@ async function uploadFileForTask(
     }),
   })
   if (!res.ok) throw new Error(`MinerU batch submit failed: HTTP ${res.status}`)
-  const json: UploadUrlResponse = await res.json()
+  const json = (await res.json()) as UploadUrlResponse
   assertMineruSuccess(json)
 
   const batchId = json.data.batch_id
@@ -431,7 +431,7 @@ async function pollTask(token: string, taskId: string, signal?: AbortSignal): Pr
       signal,
     })
     if (!res.ok) throw new Error(`MinerU poll failed: HTTP ${res.status}`)
-    const json: TaskStatus = await res.json()
+    const json = (await res.json()) as TaskStatus
     assertMineruSuccess(json)
 
     if (json.data.state === "done" && json.data.full_zip_url) {
@@ -463,7 +463,7 @@ async function pollBatchTask(
       { headers, signal },
     )
     if (!res.ok) throw new Error(`MinerU batch poll failed: HTTP ${res.status}`)
-    const json: BatchStatus = await res.json()
+    const json = (await res.json()) as BatchStatus
     assertMineruSuccess(json)
 
     const result = json.data.extract_result[0]
@@ -653,7 +653,7 @@ export async function testMineruConnection(token: string): Promise<void> {
     throw new Error(`HTTP ${res.status}: ${text}`)
   }
 
-  const json: TaskResponse = await res.json()
+  const json = (await res.json()) as TaskResponse
   assertMineruSuccess(json)
 }
 

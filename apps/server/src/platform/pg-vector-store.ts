@@ -99,3 +99,7 @@ export async function countChunks(projectId: string): Promise<number> {
   )
   return Number(rows[0]?.n ?? 0)
 }
+
+export async function clearChunks(projectId: string): Promise<void> {
+  await query("DELETE FROM chunks WHERE project_id = $1", [projectId])
+}
